@@ -1,0 +1,3 @@
+[submodule "esp_adk"]
+	path = esp_adk
+	url = https://github.com/slompf18/esp-apple-homekit-adk
