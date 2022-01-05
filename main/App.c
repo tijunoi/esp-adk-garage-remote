@@ -4,11 +4,7 @@
 // you may not use this file except in compliance with the License.
 // See [CONTRIBUTORS.md] for the list of HomeKit ADK project authors.
 
-// An example that implements the light bulb HomeKit profile. It can serve as a basic implementation for
-// any platform. The accessory logic implementation is reduced to internal state updates and log output.
-//
-// This implementation is platform-independent.
-//
+
 // The code consists of multiple parts:
 //
 //   1. The definition of the accessory configuration and its internal state.
@@ -61,7 +57,9 @@
  */
 typedef struct {
     struct {
-        bool lightBulbOn;
+        uint8_t currentDoorState;
+        uint8_t targetDoorState;
+        bool obstructionDetected;
     } state;
     HAPAccessoryServerRef* server;
     HAPPlatformKeyValueStoreRef keyValueStore;
@@ -102,9 +100,8 @@ static void LoadAccessoryState(void) {
         }
         HAPRawBufferZero(&accessoryConfiguration.state, sizeof accessoryConfiguration.state);
     } else {
-        // here we should set the gpio to the correct value with a switch on stored value
-        // when a garage door, set target and current to 1 instead of activating led and save accessory state.
-        gpio_set_level(kLedGPIOPin, accessoryConfiguration.state.lightBulbOn);
+        accessoryConfiguration.state.targetDoorState = kHAPCharacteristicValue_TargetDoorState_Closed;
+        accessoryConfiguration.state.currentDoorState = kHAPCharacteristicValue_CurrentDoorState_Closed;
     }
 }
 
@@ -130,22 +127,22 @@ static void SaveAccessoryState(void) {
 //----------------------------------------------------------------------------------------------------------------------
 
 /**
- * HomeKit accessory that provides the Light Bulb service.
+ * HomeKit accessory that provides the Garage Door Opener service.
  *
  * Note: Not constant to enable BCT Manual Name Change.
  */
 static HAPAccessory accessory = { .aid = 1,
-                                  .category = kHAPAccessoryCategory_Lighting,
-                                  .name = "Light Bulb",
-                                  .manufacturer = "Manufacturer",
-                                  .model = "LightBulb1,1",
+                                  .category = kHAPAccessoryCategory_GarageDoorOpeners,
+                                  .name = "Garage Door",
+                                  .manufacturer = "DIY",
+                                  .model = "GarageDoor1,1",
                                   .serialNumber = "099DB48E9E28",
                                   .firmwareVersion = "1",
                                   .hardwareVersion = "1",
                                   .services = (const HAPService* const[]) { &accessoryInformationService,
                                                                             &hapProtocolInformationService,
                                                                             &pairingService,
-                                                                            &lightBulbService,
+                                                                            &garageDoorOpenerService,
                                                                             NULL },
                                   .callbacks = { .identify = IdentifyAccessory } };
 
@@ -171,7 +168,7 @@ typedef struct {
     HAPCharacteristic* characteristic;
 } AccessoryNotificationCallbackContext;
 
-void run_loop_callback(void* context, size_t context_size) {
+void AccessoryNotificationRunLoopCallback(void* context, size_t context_size) {
     AccessoryNotificationCallbackContext* c = (AccessoryNotificationCallbackContext *) context;
     HAPAccessoryServerRaiseEvent(accessoryConfiguration.server, c->characteristic, c->service, c->accessory);
 }
@@ -185,7 +182,7 @@ void ScheduleAccessoryNotificationInRunLoop(
         .service = service,
         .characteristic = characteristic,
     };
-    HAPPlatformRunLoopScheduleCallback(run_loop_callback, &context, sizeof context);
+    HAPPlatformRunLoopScheduleCallback(AccessoryNotificationRunLoopCallback, &context, sizeof context);
 }
 
 void AppCreate(HAPAccessoryServerRef* server, HAPPlatformKeyValueStoreRef keyValueStore) {
@@ -226,12 +223,14 @@ void switch_off_handler(void *args){
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         timer_pause(TIMER_GROUP_0, TIMER_0); // todo: deinit timer by handle instead of hardcoding it here
-        if (accessoryConfiguration.state.lightBulbOn) {
-            HAPLog(&kHAPLog_Default, "");
-            accessoryConfiguration.state.lightBulbOn = false;
-            gpio_set_level(kLedGPIOPin, false);
+        if (((HAPCharacteristicValue_TargetDoorState) accessoryConfiguration.state.targetDoorState) == kHAPCharacteristicValue_TargetDoorState_Open) {
+            HAPLog(&kHAPLog_Default, "Cutting opener remote signal");
+            accessoryConfiguration.state.targetDoorState = kHAPCharacteristicValue_TargetDoorState_Closed;
+            accessoryConfiguration.state.currentDoorState = kHAPCharacteristicValue_CurrentDoorState_Closed;
             SaveAccessoryState();
-            ScheduleAccessoryNotificationInRunLoop(&accessory, &lightBulbService, &lightBulbOnCharacteristic);
+            gpio_set_level(kLedGPIOPin, false);
+            ScheduleAccessoryNotificationInRunLoop(&accessory, &garageDoorOpenerService, &garageDoorOpenerTargetDoorStateCharacteristic);
+            ScheduleAccessoryNotificationInRunLoop(&accessory, &garageDoorOpenerService, &garageDoorOpenerCurrentDoorStateCharacteristic);
         }
     }
 }
@@ -291,35 +290,114 @@ HAPError IdentifyAccessory(
     return kHAPError_None;
 }
 
+
+/**
+ * Handle read request to the 'Current Door State' characteristic of the Garage Door Opener service.
+ */
 HAP_RESULT_USE_CHECK
-HAPError HandleLightBulbOnRead(
+HAPError HandleGarageDoorOpenerCurrentDoorStateRead(
         HAPAccessoryServerRef* server HAP_UNUSED,
-        const HAPBoolCharacteristicReadRequest* request HAP_UNUSED,
-        bool* value,
+        const HAPUInt8CharacteristicReadRequest* request HAP_UNUSED,
+        uint8_t* value,
         void* _Nullable context HAP_UNUSED) {
-    *value = accessoryConfiguration.state.lightBulbOn;
-    HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, *value ? "true" : "false");
+    HAPLogInfo(&kHAPLog_Default, "%s", __func__);
+    *value = accessoryConfiguration.state.currentDoorState;
+    switch (*value) {
+        case kHAPCharacteristicValue_CurrentDoorState_Open: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "CurrentDoorState_Open");
+        } break;
+        case kHAPCharacteristicValue_CurrentDoorState_Closed: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "CurrentDoorState_Closed");
+        } break;
+        case kHAPCharacteristicValue_CurrentDoorState_Opening: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "CurrentDoorState_Opening");
+        } break;
+        case kHAPCharacteristicValue_CurrentDoorState_Closing: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "CurrentDoorState_Closing");
+        } break;
+        case kHAPCharacteristicValue_CurrentDoorState_Stopped: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "CurrentDoorState_Stopped");
+        } break;
+    }
+    return kHAPError_None;
+}
+
+/**
+ * Handle read request to the 'Target Door State' characteristic of the Garage Door Opener service.
+ */
+HAP_RESULT_USE_CHECK
+HAPError HandleGarageDoorOpenerTargetDoorStateRead(
+        HAPAccessoryServerRef* server HAP_UNUSED,
+        const HAPUInt8CharacteristicReadRequest* request HAP_UNUSED,
+        uint8_t* value,
+        void* _Nullable context HAP_UNUSED) {
+    HAPLogInfo(&kHAPLog_Default, "%s", __func__);
+    *value = accessoryConfiguration.state.targetDoorState;
+    switch (*value) {
+        case kHAPCharacteristicValue_TargetDoorState_Open: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "TargetDoorState_Open");
+        } break;
+        case kHAPCharacteristicValue_TargetDoorState_Closed: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "TargetDoorState_Closed");
+        } break;
+    }
+    return kHAPError_None;
+}
+
+/**
+ * Handle write request to the 'Target Door State' characteristic of the Garage Door Opener service.
+ */
+HAP_RESULT_USE_CHECK
+HAPError HandleGarageDoorOpenerTargetDoorStateWrite(
+        HAPAccessoryServerRef* server,
+        const HAPUInt8CharacteristicWriteRequest* request,
+        uint8_t value,
+        void* _Nullable context HAP_UNUSED) {
+    HAPLogInfo(&kHAPLog_Default, "%s", __func__);
+    HAPCharacteristicValue_TargetDoorState targetState = (HAPCharacteristicValue_TargetDoorState) value;
+    switch (targetState) {
+        case kHAPCharacteristicValue_TargetDoorState_Open: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "TargetDoorState_Open");
+        } break;
+        case kHAPCharacteristicValue_TargetDoorState_Closed: {
+            HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, "TargetDoorState_Closed");
+        } break;
+    }
+
+    if (accessoryConfiguration.state.targetDoorState != targetState) {
+        accessoryConfiguration.state.targetDoorState = targetState;
+        accessoryConfiguration.state.currentDoorState = targetState;
+        SaveAccessoryState();
+        HAPAccessoryServerRaiseEvent(server, request->characteristic, request->service, request->accessory);
+        HAPAccessoryServerRaiseEvent(server, &garageDoorOpenerCurrentDoorStateCharacteristic, request->service, request->accessory);
+
+        // this should be a a helper function for mapping the value and notifying current/target state
+        switch (targetState) {
+            case kHAPCharacteristicValue_TargetDoorState_Open: {
+                gpio_set_level(kLedGPIOPin, true);
+                set_timer(5000, switch_off_timer_callback);
+            } break;
+            case kHAPCharacteristicValue_TargetDoorState_Closed: {
+                gpio_set_level(kLedGPIOPin, false);
+            } break;
+        }
+
+    }
 
     return kHAPError_None;
 }
 
+/**
+ * Handle read request to the 'Obstruction Detected' characteristic of the Garage Door Opener service.
+ */
 HAP_RESULT_USE_CHECK
-HAPError HandleLightBulbOnWrite(
-        HAPAccessoryServerRef* server,
-        const HAPBoolCharacteristicWriteRequest* request,
-        bool value,
+HAPError HandleGarageDoorOpenerObstructionDetectedRead(
+        HAPAccessoryServerRef* server HAP_UNUSED,
+        const HAPBoolCharacteristicReadRequest* request HAP_UNUSED,
+        bool* value,
         void* _Nullable context HAP_UNUSED) {
-    HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, value ? "true" : "false");
-    if (accessoryConfiguration.state.lightBulbOn != value) {
-        accessoryConfiguration.state.lightBulbOn = value;
-        // this should be a switch in the future or with a helper function for mapping the value and notifying current/target state
-        gpio_set_level(kLedGPIOPin, value);
-
-        SaveAccessoryState();
-
-        HAPAccessoryServerRaiseEvent(server, request->characteristic, request->service, request->accessory);
-        set_timer(5000, switch_off_timer_callback);
-    }
+    *value = accessoryConfiguration.state.obstructionDetected;
+    HAPLogInfo(&kHAPLog_Default, "%s: %s", __func__, *value ? "true" : "false");
 
     return kHAPError_None;
 }

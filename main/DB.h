@@ -4,8 +4,7 @@
 // you may not use this file except in compliance with the License.
 // See [CONTRIBUTORS.md] for the list of HomeKit ADK project authors.
 
-// Basic light bulb database example. This header file, and the corresponding DB.c implementation in the ADK, is
-// platform-independent.
+// Garage door opener database
 
 #ifndef DB_H
 #define DB_H
@@ -23,7 +22,7 @@ extern "C" {
 /**
  * Total number of services and characteristics contained in the accessory.
  */
-#define kAttributeCount ((size_t) 21)
+#define kAttributeCount ((size_t) 23)
 
 /**
  * HomeKit Accessory Information service.
@@ -53,14 +52,25 @@ extern const HAPService hapProtocolInformationService;
 extern const HAPService pairingService;
 
 /**
- * Light Bulb service.
+ * Garage Door Opener service.
  */
-extern const HAPService lightBulbService;
+extern const HAPService garageDoorOpenerService;
 
 /**
- * The 'On' characteristic of the Light Bulb service.
+ * The 'Current State' characteristic of the Garage Door Opener service.
  */
-extern const HAPBoolCharacteristic lightBulbOnCharacteristic;
+extern const HAPUInt8Characteristic garageDoorOpenerCurrentDoorStateCharacteristic;
+
+/**
+ * The 'Target State' characteristic of the Garage Door Opener service.
+ */
+extern const HAPUInt8Characteristic garageDoorOpenerTargetDoorStateCharacteristic;
+
+/**
+ * The 'Obstruction Detected' characteristic of the Garage Door Opener service.
+ */
+extern const HAPBoolCharacteristic garageDoorOpenerObstructionDetectedCharacteristic;
+
 
 #if __has_feature(nullability)
 #pragma clang assume_nonnull end

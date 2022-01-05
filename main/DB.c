@@ -5,7 +5,7 @@
 // See [CONTRIBUTORS.md] for the list of HomeKit ADK project authors.
 
 // This file contains the accessory attribute database that defines the accessory information service, HAP Protocol
-// Information Service, the Pairing service and finally the service signature exposed by the light bulb.
+// Information Service, the Pairing service and finally the service signature exposed by the garage door opener.
 
 #include "App.h"
 #include "DB.h"
@@ -36,12 +36,14 @@
 #define kIID_PairingPairingFeatures ((uint64_t) 0x0024)
 #define kIID_PairingPairingPairings ((uint64_t) 0x0025)
 
-#define kIID_LightBulb                 ((uint64_t) 0x0030)
-#define kIID_LightBulbServiceSignature ((uint64_t) 0x0031)
-#define kIID_LightBulbName             ((uint64_t) 0x0032)
-#define kIID_LightBulbOn               ((uint64_t) 0x0033)
+#define kIID_GarageDoorOpener                    ((uint64_t) 0x0030)
+#define kIID_GarageDoorOpenerServiceSignature    ((uint64_t) 0x0031)
+#define kIID_GarageDoorOpenerName                ((uint64_t) 0x0032)
+#define kIID_GarageDoorOpenerCurrentDoorState    ((uint64_t) 0x0033)
+#define kIID_GarageDoorOpenerTargetDoorState     ((uint64_t) 0x0034)
+#define kIID_GarageDoorOpenerObstructionDetected ((uint64_t) 0x0035)
 
-HAP_STATIC_ASSERT(kAttributeCount == 9 + 3 + 5 + 4, AttributeCount_mismatch);
+HAP_STATIC_ASSERT(kAttributeCount == 9 + 3 + 5 + 6, AttributeCount_mismatch);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -392,11 +394,11 @@ const HAPService pairingService = {
 //----------------------------------------------------------------------------------------------------------------------
 
 /**
- * The 'Service Signature' characteristic of the Light Bulb service.
+ * The 'Service Signature' characteristic of the Garage Door Opener service.
  */
-static const HAPDataCharacteristic lightBulbServiceSignatureCharacteristic = {
+static const HAPDataCharacteristic garageDoorOpenerServiceSignatureCharacteristic = {
     .format = kHAPCharacteristicFormat_Data,
-    .iid = kIID_LightBulbServiceSignature,
+    .iid = kIID_GarageDoorOpenerServiceSignature,
     .characteristicType = &kHAPCharacteristicType_ServiceSignature,
     .debugDescription = kHAPCharacteristicDebugDescription_ServiceSignature,
     .manufacturerDescription = NULL,
@@ -416,11 +418,11 @@ static const HAPDataCharacteristic lightBulbServiceSignatureCharacteristic = {
 };
 
 /**
- * The 'Name' characteristic of the Light Bulb service.
+ * The 'Name' characteristic of the Garage Door Opener service.
  */
-static const HAPStringCharacteristic lightBulbNameCharacteristic = {
+static const HAPStringCharacteristic garageDoorOpenerNameCharacteristic = {
     .format = kHAPCharacteristicFormat_String,
-    .iid = kIID_LightBulbName,
+    .iid = kIID_GarageDoorOpenerName,
     .characteristicType = &kHAPCharacteristicType_Name,
     .debugDescription = kHAPCharacteristicDebugDescription_Name,
     .manufacturerDescription = NULL,
@@ -440,16 +442,16 @@ static const HAPStringCharacteristic lightBulbNameCharacteristic = {
 };
 
 /**
- * The 'On' characteristic of the Light Bulb service.
+ * The 'Current State' characteristic of the Garage Door Opener service.
  */
-const HAPBoolCharacteristic lightBulbOnCharacteristic = {
-    .format = kHAPCharacteristicFormat_Bool,
-    .iid = kIID_LightBulbOn,
-    .characteristicType = &kHAPCharacteristicType_On,
-    .debugDescription = kHAPCharacteristicDebugDescription_On,
+const HAPUInt8Characteristic garageDoorOpenerCurrentDoorStateCharacteristic = {
+    .format = kHAPCharacteristicFormat_UInt8,
+    .iid = kIID_GarageDoorOpenerCurrentDoorState,
+    .characteristicType = &kHAPCharacteristicType_CurrentDoorState,
+    .debugDescription = kHAPCharacteristicDebugDescription_CurrentDoorState,
     .manufacturerDescription = NULL,
     .properties = { .readable = true,
-                    .writable = true,
+                    .writable = false,
                     .supportsEventNotification = true,
                     .hidden = false,
                     .requiresTimedWrite = false,
@@ -459,21 +461,83 @@ const HAPBoolCharacteristic lightBulbOnCharacteristic = {
                              .supportsDisconnectedNotification = true,
                              .readableWithoutSecurity = false,
                              .writableWithoutSecurity = false } },
-    .callbacks = { .handleRead = HandleLightBulbOnRead, .handleWrite = HandleLightBulbOnWrite }
+    .units = kHAPCharacteristicUnits_None,
+    .constraints = { .minimumValue = 0,
+                     .maximumValue = 4,
+                     .stepValue = 1,
+                     .validValues = NULL,
+                     .validValuesRanges = NULL },
+    .callbacks = { .handleRead = HandleGarageDoorOpenerCurrentDoorStateRead, .handleWrite = NULL }
 };
 
 /**
- * The Light Bulb service that contains the 'On' characteristic.
+ * The 'Target State' characteristic of the Garage Door Opener service.
  */
-const HAPService lightBulbService = {
-    .iid = kIID_LightBulb,
-    .serviceType = &kHAPServiceType_LightBulb,
-    .debugDescription = kHAPServiceDebugDescription_LightBulb,
-    .name = "Light Bulb",
+const HAPUInt8Characteristic garageDoorOpenerTargetDoorStateCharacteristic = {
+    .format = kHAPCharacteristicFormat_UInt8,
+    .iid = kIID_GarageDoorOpenerTargetDoorState,
+    .characteristicType = &kHAPCharacteristicType_TargetDoorState,
+    .debugDescription = kHAPCharacteristicDebugDescription_TargetDoorState,
+    .manufacturerDescription = NULL,
+    .properties = { .readable = true,
+                    .writable = true,
+                    .supportsEventNotification = true,
+                    .hidden = false,
+                    .requiresTimedWrite = true,
+                    .supportsAuthorizationData = false,
+                    .ip = { .controlPoint = false, .supportsWriteResponse = false },
+                    .ble = { .supportsBroadcastNotification = true,
+                             .supportsDisconnectedNotification = true,
+                             .readableWithoutSecurity = false,
+                             .writableWithoutSecurity = false } },
+    .units = kHAPCharacteristicUnits_None,
+    .constraints = { .minimumValue = 0,
+                     .maximumValue = 1,
+                     .stepValue = 1,
+                     .validValues = NULL,
+                     .validValuesRanges = NULL },
+    .callbacks = { .handleRead = HandleGarageDoorOpenerTargetDoorStateRead,
+                   .handleWrite = HandleGarageDoorOpenerTargetDoorStateWrite }
+};
+
+
+/**
+ * The 'Obstruction Detected' characteristic of the Garage Door Opener service.
+ */
+const HAPBoolCharacteristic garageDoorOpenerObstructionDetectedCharacteristic = {
+    .format = kHAPCharacteristicFormat_Bool,
+    .iid = kIID_GarageDoorOpenerObstructionDetected,
+    .characteristicType = &kHAPCharacteristicType_ObstructionDetected,
+    .debugDescription = kHAPCharacteristicDebugDescription_ObstructionDetected,
+    .manufacturerDescription = NULL,
+    .properties = { .readable = true,
+                    .writable = false,
+                    .supportsEventNotification = true,
+                    .hidden = false,
+                    .requiresTimedWrite = false,
+                    .supportsAuthorizationData = false,
+                    .ip = { .controlPoint = false, .supportsWriteResponse = false },
+                    .ble = { .supportsBroadcastNotification = true,
+                             .supportsDisconnectedNotification = true,
+                             .readableWithoutSecurity = false,
+                             .writableWithoutSecurity = false } },
+    .callbacks = { .handleRead = HandleGarageDoorOpenerObstructionDetectedRead, .handleWrite = NULL }
+};
+
+/**
+ * Garage Door Opener service.
+ */
+const HAPService garageDoorOpenerService = {
+    .iid = kIID_GarageDoorOpener,
+    .serviceType = &kHAPServiceType_GarageDoorOpener,
+    .debugDescription = kHAPServiceDebugDescription_GarageDoorOpener,
+    .name = "Garage Door",
     .properties = { .primaryService = true, .hidden = false, .ble = { .supportsConfiguration = false } },
     .linkedServices = NULL,
-    .characteristics = (const HAPCharacteristic* const[]) { &lightBulbServiceSignatureCharacteristic,
-                                                            &lightBulbNameCharacteristic,
-                                                            &lightBulbOnCharacteristic,
+    .characteristics = (const HAPCharacteristic* const[]) { &garageDoorOpenerServiceSignatureCharacteristic,
+                                                            &garageDoorOpenerNameCharacteristic,
+                                                            &garageDoorOpenerCurrentDoorStateCharacteristic,
+                                                            &garageDoorOpenerTargetDoorStateCharacteristic,
+                                                            &garageDoorOpenerObstructionDetectedCharacteristic,
                                                             NULL }
 };

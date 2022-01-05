@@ -33,23 +33,43 @@ HAPError IdentifyAccessory(
         void* _Nullable context);
 
 /**
- * Handle read request to the 'On' characteristic of the Light Bulb service.
+ * Handle read request to the 'Current Door State' characteristic of the Garage Door Opener service.
  */
 HAP_RESULT_USE_CHECK
-HAPError HandleLightBulbOnRead(
+HAPError HandleGarageDoorOpenerCurrentDoorStateRead(
         HAPAccessoryServerRef* server,
-        const HAPBoolCharacteristicReadRequest* request,
-        bool* value,
+        const HAPUInt8CharacteristicReadRequest* request,
+        uint8_t* value,
         void* _Nullable context);
 
 /**
- * Handle write request to the 'On' characteristic of the Light Bulb service.
+ * Handle read request to the 'Target Door State' characteristic of the Garage Door Opener service.
  */
 HAP_RESULT_USE_CHECK
-HAPError HandleLightBulbOnWrite(
+HAPError HandleGarageDoorOpenerTargetDoorStateRead(
         HAPAccessoryServerRef* server,
-        const HAPBoolCharacteristicWriteRequest* request,
-        bool value,
+        const HAPUInt8CharacteristicReadRequest* request,
+        uint8_t* value,
+        void* _Nullable context);
+
+/**
+ * Handle write request to the 'Target Door State' characteristic of the Garage Door Opener service.
+ */
+HAP_RESULT_USE_CHECK
+HAPError HandleGarageDoorOpenerTargetDoorStateWrite(
+        HAPAccessoryServerRef* server,
+        const HAPUInt8CharacteristicWriteRequest* request,
+        uint8_t value,
+        void* _Nullable context);
+
+/**
+ * Handle read request to the 'Obstruction Detected' characteristic of the Garage Door Opener service.
+ */
+HAP_RESULT_USE_CHECK
+HAPError HandleGarageDoorOpenerObstructionDetectedRead(
+        HAPAccessoryServerRef* server,
+        const HAPBoolCharacteristicReadRequest* request,
+        bool* value,
         void* _Nullable context);
 
 /**
