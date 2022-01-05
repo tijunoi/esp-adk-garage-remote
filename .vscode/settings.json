@@ -7,6 +7,7 @@
         "happlatformkeyvaluestore+init.h": "c",
         "complex": "cpp",
         "valarray": "cpp",
-        "*.ipp": "c"
+        "*.ipp": "c",
+        "system_error": "c"
     }
 }
